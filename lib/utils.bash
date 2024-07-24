@@ -2,8 +2,6 @@
 
 set -euo pipefail
 
-# TODO: Ensure this is the correct GitHub homepage where releases can be downloaded for slack-cli.
-GH_REPO="n"
 TOOL_NAME="slack-cli"
 TOOL_TEST="slack --version"
 
@@ -14,26 +12,14 @@ fail() {
 
 curl_opts=(-fsSL)
 
-# NOTE: You might want to remove this if slack-cli is not hosted on GitHub releases.
-if [ -n "${GITHUB_API_TOKEN:-}" ]; then
-	curl_opts=("${curl_opts[@]}" -H "Authorization: token $GITHUB_API_TOKEN")
-fi
-
 sort_versions() {
 	sed 'h; s/[+-]/./g; s/.p\([[:digit:]]\)/.z\1/; s/$/.z/; G; s/\n/ /' |
 		LC_ALL=C sort -t. -k 1,1 -k 2,2n -k 3,3n -k 4,4n -k 5,5n | awk '{print $2}'
 }
 
-list_github_tags() {
-	git ls-remote --tags --refs "$GH_REPO" |
-		grep -o 'refs/tags/.*' | cut -d/ -f3- |
-		sed 's/^v//' # NOTE: You might want to adapt this sed to remove non-version strings from tags
-}
-
 list_all_versions() {
-	# TODO: Adapt this. By default we simply list the tag names from GitHub releases.
-	# Change this function if slack-cli has other means of determining installable versions.
-	list_github_tags
+	# Copied from the Slack CLI installation script at https://downloads.slack-edge.com/slack-cli/install.sh
+	curl --silent "https://api.slack.com/slackcli/metadata.json" | grep -o '"version": "[^"]*' | grep -o '[^"]*$'
 }
 
 download_release() {
@@ -41,8 +27,11 @@ download_release() {
 	version="$1"
 	filename="$2"
 
-	# TODO: Adapt the release URL convention for slack-cli
-	url="$GH_REPO/archive/v${version}.tar.gz"
+	if [ "$(uname)" == "Darwin" ]; then
+		url="https://downloads.slack-edge.com/slack-cli/slack_cli_${version}_macOS_64-bit.tar.gz"
+	elif [ "$(expr substr $(uname -s) 1 5)" == "Linux" ]; then
+		url="https://downloads.slack-edge.com/slack-cli/slack_cli_${version}_linux_64-bit.tar.gz"
+	fi
 
 	echo "* Downloading $TOOL_NAME release $version..."
 	curl "${curl_opts[@]}" -o "$filename" -C - "$url" || fail "Could not download $url"
@@ -61,7 +50,6 @@ install_version() {
 		mkdir -p "$install_path"
 		cp -r "$ASDF_DOWNLOAD_PATH"/* "$install_path"
 
-		# TODO: Assert slack-cli executable exists.
 		local tool_cmd
 		tool_cmd="$(echo "$TOOL_TEST" | cut -d' ' -f1)"
 		test -x "$install_path/$tool_cmd" || fail "Expected $install_path/$tool_cmd to be executable."
